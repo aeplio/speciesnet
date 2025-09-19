@@ -1,0 +1,320 @@
+<template>
+  <v-app>
+    <v-main>
+      <v-container class="pa-6" fluid>
+        <v-row>
+          <v-col cols="12">
+            <v-toolbar color="primary" dark flat>
+              <v-toolbar-title>SpeciesNet 图像识别</v-toolbar-title>
+              <v-spacer></v-spacer>
+              <v-btn icon="mdi-information" @click="showHelp = true" />
+            </v-toolbar>
+          </v-col>
+        </v-row>
+
+        <v-row>
+          <!-- 上方：上传与预览 -->
+          <v-col cols="12" md="7">
+            <v-card>
+              <v-card-title>上传图片</v-card-title>
+              <v-card-text>
+                <v-alert v-if="errorMessage" type="error" class="mb-4" border="start" variant="tonal">
+                  <div class="mb-1">{{ errorMessage }}</div>
+                  <div v-if="errorHint" class="text-medium-emphasis">{{ errorHint }}</div>
+                  <details v-if="errorStderr" class="mt-2">
+                    <summary>展开错误详情</summary>
+                    <pre style="white-space: pre-wrap">{{ errorStderr }}</pre>
+                  </details>
+                </v-alert>
+                <v-file-input
+                  v-model="file"
+                  label="选择图片"
+                  accept="image/*"
+                  prepend-inner-icon="mdi-image"
+                  show-size
+                  @change="onFileChange"
+                />
+                <v-img v-if="previewUrl" :src="previewUrl" height="320" class="mt-4 preview-img" />
+                <v-row class="mt-4" dense>
+                  <v-col cols="12" sm="6">
+                    <v-text-field v-model="country" label="国家(ISO3，可选) 例：CHN/USA/GBR" />
+                  </v-col>
+                  <v-col cols="12" sm="6">
+                    <v-text-field v-model="admin1" label="州/省(可选) 例：CA" />
+                  </v-col>
+                </v-row>
+              </v-card-text>
+              <v-card-actions class="px-4 pb-4">
+                <v-btn
+                  color="primary"
+                  variant="elevated"
+                  size="x-large"
+                  rounded="pill"
+                  block
+                  prepend-icon="mdi-magnify-scan"
+                  :loading="loading"
+                  :disabled="!file || loading"
+                  @click="submit"
+                >
+                  开始识别
+                </v-btn>
+              </v-card-actions>
+            </v-card>
+          </v-col>
+
+          <!-- 右侧：标记后的图片 -->
+          <v-col cols="12" md="5">
+            <v-card>
+              <v-card-title>模型标注</v-card-title>
+              <v-card-text>
+                <v-img v-if="annotatedUrl" :src="annotatedUrl" height="360" class="annotated-img" />
+                <div v-else class="text-medium-emphasis">等待识别后显示...</div>
+              </v-card-text>
+            </v-card>
+          </v-col>
+        </v-row>
+
+        <!-- 下方：分类信息 -->
+        <v-row class="mt-2">
+          <v-col cols="12">
+            <v-card>
+              <v-card-title>物种分类信息</v-card-title>
+              <v-card-text>
+                <div v-if="result">
+                  <v-alert type="info" v-if="result.category !== 'animals'">
+                    非动物：{{ nonAnimalLabel }}（置信度 {{ nonAnimalScore }}）
+                  </v-alert>
+                  <template v-else>
+                    <v-row>
+                      <v-col cols="12" md="8">
+                        <v-list density="comfortable">
+                          <v-list-item title="纲 (Class)" :subtitle="taxonomyParsed.class || ''" />
+                          <v-list-item title="目 (Order)" :subtitle="taxonomyParsed.order || ''" />
+                          <v-list-item title="科 (Family)" :subtitle="taxonomyParsed.family || ''" />
+                          <v-list-item title="属 (Genus)" :subtitle="taxonomyParsed.genus || ''" />
+                          <v-list-item title="种 (Species)" :subtitle="taxonomyParsed.species || ''" />
+                          <v-list-item title="常见名称 (Common)" :subtitle="taxonomyParsed.common || ''" />
+                          <v-list-item title="最终置信度" :subtitle="(result.confidence*100).toFixed(1) + '%'" />
+                        </v-list>
+                      </v-col>
+                      <v-col cols="12" md="4">
+                        <div class="text-subtitle-2 mb-2">其他Top分数（简略）</div>
+                        <v-list density="comfortable">
+                          <v-list-item
+                            v-for="(item, i) in otherTaxonomyList"
+                            :key="i"
+                            :title="`置信度 ${item.scorePercent}`"
+                            :subtitle="`${item.class || ''}；${item.order || ''}；${item.family || ''}；${item.genus || ''}；${item.species || ''}；${item.common || ''}`"
+                          />
+                        </v-list>
+                      </v-col>
+                    </v-row>
+                  </template>
+                </div>
+                <div v-else class="text-medium-emphasis">未有结果，请先上传并识别。</div>
+              </v-card-text>
+            </v-card>
+          </v-col>
+        </v-row>
+
+        <v-dialog v-model="showHelp" width="600">
+          <v-card>
+            <v-card-title>说明</v-card-title>
+            <v-card-text>
+              - 前端运行端口：3000；后端代理：/api → 127.0.0.1:8000<br/>
+              - 上传图片将放入后端临时文件夹并在识别完成后清理。<br/>
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer></v-spacer>
+              <v-btn color="primary" @click="showHelp=false">关闭</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+      </v-container>
+    </v-main>
+  </v-app>
+</template>
+
+<script setup lang="ts">
+import axios from 'axios'
+import { computed, ref } from 'vue'
+
+const file = ref<File|undefined>()
+const previewUrl = ref<string|undefined>()
+const annotatedUrl = ref<string|undefined>()
+const loading = ref(false)
+const result = ref<any>(null)
+const showHelp = ref(false)
+const country = ref('')
+const admin1 = ref('')
+const errorMessage = ref('')
+const errorHint = ref('')
+const errorStderr = ref('')
+
+// 计算“非动物”类别的展示信息：从 detections 里选 label != 'animal' 的最高置信度项
+const nonAnimalLabel = computed(() => {
+  const p = result.value?.raw_json?.predictions?.[0]
+  const dets = (p?.detections ?? []) as Array<any>
+  if (!Array.isArray(dets) || dets.length === 0) {
+    // 回退到 result.category
+    return String(result.value?.category ?? '')
+  }
+  let best: any = null
+  let max = -Infinity
+  for (const d of dets) {
+    const label = String(d?.label ?? '').toLowerCase()
+    if (label === 'animal') continue
+    const conf = typeof d?.conf === 'number' ? d.conf : Number(d?.conf)
+    if (!Number.isNaN(conf) && conf > max) { max = conf; best = d }
+  }
+  if (best) {
+    return String(best.label ?? '')
+  }
+  return String(result.value?.category ?? '')
+})
+
+const nonAnimalScore = computed(() => {
+  const p = result.value?.raw_json?.predictions?.[0]
+  const dets = (p?.detections ?? []) as Array<any>
+  if (!Array.isArray(dets) || dets.length === 0) {
+    const s = Number(result.value?.confidence ?? 0)
+    return (s * 100).toFixed(1) + '%'
+  }
+  let max = -Infinity
+  for (const d of dets) {
+    const label = String(d?.label ?? '').toLowerCase()
+    if (label === 'animal') continue
+    const conf = typeof d?.conf === 'number' ? d.conf : Number(d?.conf)
+    if (!Number.isNaN(conf) && conf > max) { max = conf }
+  }
+  if (max > -Infinity) {
+    return (max * 100).toFixed(1) + '%'
+  }
+  const s = Number(result.value?.confidence ?? 0)
+  return (s * 100).toFixed(1) + '%'
+})
+
+// 解析除最高分之外的其他分类，输出谱系与百分比
+const otherTaxonomyList = computed(() => {
+  const p = result.value?.raw_json?.predictions?.[0]
+  const classes = (p?.classifications?.classes ?? []) as string[]
+  const scores = (p?.classifications?.scores ?? []) as number[]
+  if (!Array.isArray(classes) || !Array.isArray(scores) || classes.length === 0 || scores.length === 0) {
+    return [] as Array<any>
+  }
+  // 找到最高分索引
+  let topIdx = 0
+  let max = -Infinity
+  for (let i = 0; i < Math.min(classes.length, scores.length); i++) {
+    const s = typeof scores[i] === 'number' ? scores[i] : Number(scores[i])
+    if (!Number.isNaN(s) && s > max) { max = s; topIdx = i }
+  }
+  // 收集其余项并按分数降序
+  const others: Array<{ idx:number, score:number, raw:string }> = []
+  for (let i = 0; i < Math.min(classes.length, scores.length); i++) {
+    if (i === topIdx) continue
+    const s = typeof scores[i] === 'number' ? scores[i] : Number(scores[i])
+    if (!Number.isNaN(s)) others.push({ idx: i, score: s, raw: String(classes[i] ?? '') })
+  }
+  others.sort((a, b) => b.score - a.score)
+  // 映射为谱系结构
+  return others.map(o => {
+    const parts = o.raw.split(';').map(x => (typeof x === 'string' ? x.trim() : ''))
+    while (parts.length < 7) parts.push('')
+    return {
+      class: parts[1] ?? '',
+      order: parts[2] ?? '',
+      family: parts[3] ?? '',
+      genus: parts[4] ?? '',
+      species: parts[5] ?? '',
+      common: parts[6] ?? '',
+      scorePercent: (o.score * 100).toFixed(1) + '%',
+    }
+  })
+})
+
+// 从 raw_json.predictions[0].classifications.classes 中解析以分号分隔的物种信息
+// 结构: UUID; Class; Order; Family; Genus; Species; Common
+const taxonomyParsed = computed(() => {
+  const p = result.value?.raw_json?.predictions?.[0]
+  const classes = (p?.classifications?.classes ?? []) as string[]
+  const scores = (p?.classifications?.scores ?? []) as number[]
+  if (!Array.isArray(classes) || classes.length === 0) {
+    return { class: '', order: '', family: '', genus: '', species: '', common: '' }
+  }
+  let idx = 0
+  if (Array.isArray(scores) && scores.length === classes.length && scores.length > 0) {
+    let max = -Infinity
+    for (let i = 0; i < scores.length; i++) {
+      if (typeof scores[i] === 'number' && scores[i] > max) { max = scores[i]; idx = i }
+    }
+  }
+  const raw = String(classes[idx] ?? '')
+  const parts = raw.split(';').map(s => (typeof s === 'string' ? s.trim() : ''))
+  while (parts.length < 7) parts.push('')
+  const klass = parts[1] ?? ''
+  const order = parts[2] ?? ''
+  const family = parts[3] ?? ''
+  const genus = parts[4] ?? ''
+  const species = parts[5] ?? ''
+  const common = parts[6] ?? ''
+  return { class: klass, order, family, genus, species, common }
+})
+
+function onFileChange() {
+  annotatedUrl.value = undefined
+  result.value = null
+  errorMessage.value = ''
+  errorHint.value = ''
+  errorStderr.value = ''
+  if (!file.value) {
+    previewUrl.value = undefined
+    return
+  }
+  const url = URL.createObjectURL(file.value)
+  previewUrl.value = url
+}
+
+async function submit() {
+  if (!file.value) return
+  loading.value = true
+  try {
+    errorMessage.value = ''
+    errorHint.value = ''
+    errorStderr.value = ''
+    const form = new FormData()
+    form.append('file', file.value)
+    if (country.value) form.append('country', country.value)
+    if (admin1.value) form.append('admin1_region', admin1.value)
+    const { data } = await axios.post('/api/upload', form)
+    result.value = data
+    if (data.annotated_image_data) {
+      annotatedUrl.value = data.annotated_image_data
+    }
+  } catch (err: any) {
+    if (axios.isAxiosError(err)) {
+      const data = err.response?.data as any
+      errorMessage.value = data?.message || data?.detail || '后端处理失败'
+      errorHint.value = data?.hint || ''
+      errorStderr.value = data?.stderr || ''
+    } else {
+      errorMessage.value = String(err)
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+// 页面卸载时尝试清理
+// 后端已在响应前清理临时目录，这里无需处理
+</script>
+
+<style>
+html, body, #app { height: 100%; }
+/* 使上传预览完整显示在框内 */
+.preview-img > .v-img__img { object-fit: contain !important; }
+.preview-img { background-color: #fafafa; border: 1px dashed rgba(0,0,0,0.12); }
+/* 使模型标注图完整显示 */
+.annotated-img > .v-img__img { object-fit: contain !important; }
+.annotated-img { background-color: #fafafa; border: 1px solid rgba(0,0,0,0.08); }
+</style>

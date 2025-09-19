@@ -1,0 +1,51 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vscode/master/extensions/tasks/schema/tasks.schema.json",
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run Env Guard",
+      "type": "shell",
+      "command": "conda run -n speciesnet python scripts/env_guard.py",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Script (speciesnet)",
+      "type": "shell",
+      "command": "conda run -n speciesnet python main.py",
+      "problemMatcher": [],
+      "dependsOn": ["Run Env Guard"],
+      "group": "build"
+    },
+    {
+      "label": "Backend: Install & Run",
+      "type": "shell",
+      "command": "conda run -n speciesnet powershell -NoProfile -ExecutionPolicy Bypass -File ./backend/run.ps1",
+      "problemMatcher": [],
+      "dependsOn": ["Run Env Guard"],
+      "isBackground": true
+    },
+    {
+      "label": "Frontend: Install",
+      "type": "shell",
+      "command": "conda run -n speciesnet npm install",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "problemMatcher": [],
+      "dependsOn": ["Run Env Guard"]
+    },
+    {
+      "label": "Frontend: Dev (3000)",
+      "type": "shell",
+      "command": "conda run -n speciesnet npm run dev",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "problemMatcher": [],
+      "dependsOn": ["Run Env Guard", "Frontend: Install"]
+    },
+    {
+      "label": "Dev: All",
+      "type": "shell",
+      "command": "echo dev",
+      "problemMatcher": [],
+      "dependsOn": ["Backend: Install & Run", "Frontend: Dev (3000)"]
+    }
+  ]
+}

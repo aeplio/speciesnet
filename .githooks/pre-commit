@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+python scripts/env_guard.py >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+  echo "[pre-commit] speciesnet 环境未正确激活，拒绝提交。请先: conda activate speciesnet" >&2
+  exit 1
+fi
+# 可在此添加代码格式检查等
+exit 0
