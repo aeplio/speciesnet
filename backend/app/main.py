@@ -39,8 +39,11 @@ async def hello(name: str = "World"):
 
 
 class PredictionResult(BaseModel):
+    model_config = {"protected_namespaces": ()}
+    
     category: str
     confidence: float
+    model_version: Optional[str] = None
     taxonomy: Optional[dict] = None
     other_scores: Optional[list] = None
     annotated_image_data: Optional[str] = None
@@ -127,6 +130,7 @@ async def upload_and_predict(
     file: UploadFile = File(...),
     country: Optional[str] = Form(default=None),
     admin1_region: Optional[str] = Form(default=None),
+    model: Optional[str] = Form(default="v4.0.1a"),
 ):
     # 1) 为本次上传创建独立临时目录
     base_tmp = Path(tempfile.gettempdir()) / "speciesnet_uploads"
@@ -155,6 +159,16 @@ async def upload_and_predict(
         "--predictions_json",
         str(out_json),
     ]
+    
+    # 添加模型选择参数
+    if model and model.strip():
+        model_name = model.strip()
+        # 只有在明确选择 v4.0.1b 时才添加模型参数
+        # v4.0.1a 作为默认模型，不需要指定参数
+        if model_name == "v4.0.1b":
+            cli += ["--model", "kaggle:google/speciesnet/pyTorch/v4.0.1b"]
+        # v4.0.1a 使用默认配置，不添加 --model 参数
+    
     if country:
         cli += ["--country", country]
     if admin1_region:
@@ -176,6 +190,15 @@ async def upload_and_predict(
             env.pop(k, None)
         # 避免任何主机走代理
         env["NO_PROXY"] = "*"
+    
+    # 添加离线模式环境变量，强制使用本地缓存
+    env["KAGGLE_USERNAME"] = ""
+    env["KAGGLE_KEY"] = ""
+    env["OFFLINE_MODE"] = "1"
+    
+    # 设置更长的网络超时时间
+    env["REQUESTS_TIMEOUT"] = "300"  # 5分钟超时
+    env["KAGGLE_TIMEOUT"] = "300"
 
     try:
         completed = subprocess.run(cli, capture_output=True, text=True, env=env)
@@ -199,6 +222,16 @@ async def upload_and_predict(
             hint = (
                 "KaggleHub 下载超时：已默认禁用代理。若需要使用公司代理，请设置环境变量 "
                 "SPECIESNET_USE_PROXY=1；或提前在可联网环境下预下载模型后再运行。"
+            )
+        elif "connectionerror" in stderr.lower() or "connection aborted" in stderr.lower():
+            hint = (
+                "网络连接错误：可能是网络不稳定或服务器临时不可用。请检查网络连接并稍后重试。"
+                "如果问题持续，可以尝试设置环境变量 SPECIESNET_USE_PROXY=1 启用代理。"
+            )
+        elif "remote end closed connection" in stderr.lower():
+            hint = (
+                "服务器连接中断：这通常是临时的网络问题。请稍等几分钟后重试，"
+                "或检查防火墙设置是否阻止了模型下载。"
             )
         # 失败时立刻清理临时目录
         shutil.rmtree(workdir, ignore_errors=True)
@@ -253,6 +286,7 @@ async def upload_and_predict(
     data = PredictionResult(
         category=category,
         confidence=float(conf),
+        model_version=model or "v4.0.1a",
         taxonomy=taxonomy,
         other_scores=other_scores,
         annotated_image_data=data_url,

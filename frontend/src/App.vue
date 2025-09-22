@@ -36,10 +36,20 @@
                 />
                 <v-img v-if="previewUrl" :src="previewUrl" height="320" class="mt-4 preview-img" />
                 <v-row class="mt-4" dense>
-                  <v-col cols="12" sm="6">
+                  <v-col cols="12" sm="4">
+                    <v-select
+                      v-model="selectedModel"
+                      label="选择模型"
+                      :items="modelOptions"
+                      item-title="label"
+                      item-value="value"
+                      prepend-inner-icon="mdi-brain"
+                    />
+                  </v-col>
+                  <v-col cols="12" sm="4">
                     <v-text-field v-model="country" label="国家(ISO3，可选) 例：CHN/USA/GBR" />
                   </v-col>
-                  <v-col cols="12" sm="6">
+                  <v-col cols="12" sm="4">
                     <v-text-field v-model="admin1" label="州/省(可选) 例：CA" />
                   </v-col>
                 </v-row>
@@ -81,6 +91,16 @@
               <v-card-title>物种分类信息</v-card-title>
               <v-card-text>
                 <div v-if="result">
+                  <v-chip
+                    v-if="result.model_version"
+                    color="primary"
+                    variant="tonal"
+                    class="mb-3"
+                    prepend-icon="mdi-brain"
+                  >
+                    使用模型: {{ result.model_version }}
+                    {{ result.model_version === 'v4.0.1a' ? '(Always-crop)' : result.model_version === 'v4.0.1b' ? '(Full-image)' : '' }}
+                  </v-chip>
                   <v-alert type="info" v-if="result.category !== 'animals'">
                     非动物：{{ nonAnimalLabel }}（置信度 {{ nonAnimalScore }}）
                   </v-alert>
@@ -88,6 +108,7 @@
                     <v-row>
                       <v-col cols="12" md="8">
                         <v-list density="comfortable">
+                          <v-list-item title="使用模型" :subtitle="result.model_version || 'v4.0.1a'" />
                           <v-list-item title="纲 (Class)" :subtitle="taxonomyParsed.class || ''" />
                           <v-list-item title="目 (Order)" :subtitle="taxonomyParsed.order || ''" />
                           <v-list-item title="科 (Family)" :subtitle="taxonomyParsed.family || ''" />
@@ -117,12 +138,24 @@
           </v-col>
         </v-row>
 
-        <v-dialog v-model="showHelp" width="600">
+        <v-dialog v-model="showHelp" width="700">
           <v-card>
-            <v-card-title>说明</v-card-title>
+            <v-card-title>使用说明</v-card-title>
             <v-card-text>
-              - 前端运行端口：3000；后端代理：/api → 127.0.0.1:8000<br/>
-              - 上传图片将放入后端临时文件夹并在识别完成后清理。<br/>
+              <div class="mb-4">
+                <strong>基本信息：</strong><br/>
+                - 前端运行端口：3000；后端代理：/api → 127.0.0.1:8000<br/>
+                - 上传图片将放入后端临时文件夹并在识别完成后清理。
+              </div>
+              <div class="mb-4">
+                <strong>模型选择：</strong><br/>
+                - <strong>v4.0.1a (Always-crop)</strong>：先运行检测器，将图像裁剪到顶部检测边界框，然后送入物种分类器。适合动物主体明确的图像。<br/>
+                - <strong>v4.0.1b (Full-image)</strong>：同时在完整图像上独立运行检测器和物种分类器。适合复杂场景或多个目标的图像。
+              </div>
+              <div>
+                <strong>地理信息（可选）：</strong><br/>
+                提供国家代码（如CHN、USA、GBR）和州/省信息可以提高识别准确性。
+              </div>
             </v-card-text>
             <v-card-actions>
               <v-spacer></v-spacer>
@@ -147,9 +180,21 @@ const result = ref<any>(null)
 const showHelp = ref(false)
 const country = ref('')
 const admin1 = ref('')
+const selectedModel = ref('v4.0.1a')
 const errorMessage = ref('')
 const errorHint = ref('')
 const errorStderr = ref('')
+
+const modelOptions = [
+  {
+    label: 'v4.0.1a - Always-crop 模型（默认）',
+    value: 'v4.0.1a',
+  },
+  {
+    label: 'v4.0.1b - Full-image 模型',
+    value: 'v4.0.1b',
+  }
+]
 
 // 计算“非动物”类别的展示信息：从 detections 里选 label != 'animal' 的最高置信度项
 const nonAnimalLabel = computed(() => {
@@ -286,6 +331,7 @@ async function submit() {
     form.append('file', file.value)
     if (country.value) form.append('country', country.value)
     if (admin1.value) form.append('admin1_region', admin1.value)
+    if (selectedModel.value) form.append('model', selectedModel.value)
     const { data } = await axios.post('/api/upload', form)
     result.value = data
     if (data.annotated_image_data) {
