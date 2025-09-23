@@ -5,7 +5,7 @@
         <v-row>
           <v-col cols="12">
             <v-toolbar color="primary" dark flat>
-              <v-toolbar-title>SpeciesNet 图像识别</v-toolbar-title>
+              <v-toolbar-title>基于Speciesnet模型的脊椎动物分类识别系统</v-toolbar-title>
               <v-spacer></v-spacer>
               <v-btn icon="mdi-information" @click="showHelp = true" />
             </v-toolbar>
@@ -102,7 +102,7 @@
                     {{ result.model_version === 'v4.0.1a' ? '(Always-crop)' : result.model_version === 'v4.0.1b' ? '(Full-image)' : '' }}
                   </v-chip>
                   <v-alert type="info" v-if="result.category !== 'animals'">
-                    非动物：{{ nonAnimalLabel }}（置信度 {{ nonAnimalScore }}）
+                    {{ result.category }}（置信度 {{ (result.confidence*100).toFixed(1) }}%）
                   </v-alert>
                   <template v-else>
                     <v-row>
@@ -195,49 +195,6 @@ const modelOptions = [
     value: 'v4.0.1b',
   }
 ]
-
-// 计算“非动物”类别的展示信息：从 detections 里选 label != 'animal' 的最高置信度项
-const nonAnimalLabel = computed(() => {
-  const p = result.value?.raw_json?.predictions?.[0]
-  const dets = (p?.detections ?? []) as Array<any>
-  if (!Array.isArray(dets) || dets.length === 0) {
-    // 回退到 result.category
-    return String(result.value?.category ?? '')
-  }
-  let best: any = null
-  let max = -Infinity
-  for (const d of dets) {
-    const label = String(d?.label ?? '').toLowerCase()
-    if (label === 'animal') continue
-    const conf = typeof d?.conf === 'number' ? d.conf : Number(d?.conf)
-    if (!Number.isNaN(conf) && conf > max) { max = conf; best = d }
-  }
-  if (best) {
-    return String(best.label ?? '')
-  }
-  return String(result.value?.category ?? '')
-})
-
-const nonAnimalScore = computed(() => {
-  const p = result.value?.raw_json?.predictions?.[0]
-  const dets = (p?.detections ?? []) as Array<any>
-  if (!Array.isArray(dets) || dets.length === 0) {
-    const s = Number(result.value?.confidence ?? 0)
-    return (s * 100).toFixed(1) + '%'
-  }
-  let max = -Infinity
-  for (const d of dets) {
-    const label = String(d?.label ?? '').toLowerCase()
-    if (label === 'animal') continue
-    const conf = typeof d?.conf === 'number' ? d.conf : Number(d?.conf)
-    if (!Number.isNaN(conf) && conf > max) { max = conf }
-  }
-  if (max > -Infinity) {
-    return (max * 100).toFixed(1) + '%'
-  }
-  const s = Number(result.value?.confidence ?? 0)
-  return (s * 100).toFixed(1) + '%'
-})
 
 // 解析除最高分之外的其他分类，输出谱系与百分比
 const otherTaxonomyList = computed(() => {

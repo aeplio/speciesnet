@@ -12,7 +12,7 @@ from typing import Optional
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from .config import settings
+from app.config import settings
 from pydantic import BaseModel
 
 # SpeciesNet will be invoked via subprocess to avoid absl flags issues
@@ -105,8 +105,19 @@ def _parse_taxonomy_from_prediction(pred: dict) -> Optional[dict]:
 
 
 def _choose_category(pred: dict) -> tuple[str, float]:
-    # 如果非动物（human/vehicle/blank）优先直接给出；否则 animals
-    # 首选 ensemble 的 prediction/prediction_score
+    # 优先检查detections中的label字段
+    dets = pred.get("detections", [])
+    for d in dets:
+        label = d.get("label", "")
+        conf = float(d.get("conf", 0))
+        # 如果label不是"animal"，返回"非动物，[label值]"格式
+        if label and label.lower() != "animal":
+            return f"非动物，{label}", conf
+        # 如果是animal，继续正常动物识别流程
+        if label.lower() == "animal":
+            return "animals", conf
+    
+    # 如果detections为空或没有找到合适的label，检查ensemble结果
     cat = pred.get("prediction")
     score = float(pred.get("prediction_score", 0))
     if cat:
@@ -114,14 +125,7 @@ def _choose_category(pred: dict) -> tuple[str, float]:
             return cat, score
         # 动物类，返回 animals 让前端做后续展示
         return "animals", score
-    # 若无 ensemble 结果，回退到 detections
-    dets = pred.get("detections", [])
-    for d in dets:
-        label = d.get("label", "").lower()
-        if label in ("human", "vehicle"):
-            return label, float(d.get("conf", 0))
-        if label == "animal":
-            return "animals", float(d.get("conf", 0))
+    
     return "unknown", 0.0
 
 
@@ -299,3 +303,7 @@ async def upload_and_predict(
 
 
 # 由于响应中已内嵌标注图并立即清理临时目录，无需额外的文件获取与清理端点。
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
