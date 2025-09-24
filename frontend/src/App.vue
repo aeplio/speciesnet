@@ -144,7 +144,8 @@
             <v-card-text>
               <div class="mb-4">
                 <strong>基本信息：</strong><br/>
-                - 前端运行端口：3000；后端代理：/api → 127.0.0.1:8000<br/>
+                - 本项目由本人团队完全自主出品（我、机械革命、VsCode）。<br/>
+                - 本项目基于谷歌开源的Speciesnet模型完成。<br/>
                 - 上传图片将放入后端临时文件夹并在识别完成后清理。
               </div>
               <div class="mb-4">
@@ -163,6 +164,20 @@
             </v-card-actions>
           </v-card>
         </v-dialog>
+
+        <!-- 引用信息 -->
+        <v-row class="mt-6">
+          <v-col cols="12">
+            <div class="text-center text-caption text-medium-emphasis">
+              <div class="mb-2">如果您在出版物中使用此模型，请引用—— DOI：10.1049/cvi2.12318</div>
+              <div>
+                Gadot, T., Istrate, Ș., Kim, H., Morris, D., Beery, S., Birch, T., & Ahumada, J. (2024). 
+                To crop or not to crop: Comparing whole-image and cropped classification on a large dataset of camera trap images. 
+                IET Computer Vision. https://doi.org/10.1049/cvi2.12318
+              </div>
+            </div>
+          </v-col>
+        </v-row>
       </v-container>
     </v-main>
   </v-app>

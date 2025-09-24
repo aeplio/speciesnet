@@ -46,6 +46,111 @@ docker-compose ps
 docker-compose logs -f
 ```
 
+## 🤖 模型安装
+
+### 自动安装模型（推荐）
+
+在首次运行识别功能时，系统会自动下载所需的 SpeciesNet 模型：
+
+```bash
+# 激活环境
+conda activate speciesnet
+
+# 自动下载模型（首次运行时）
+python -c "
+import speciesnet
+print('模型将在首次使用时自动下载...')
+"
+```
+
+### 手动预安装模型
+
+为避免首次使用时等待下载，可以预先安装模型：
+
+```bash
+# 激活环境
+conda activate speciesnet
+
+# 下载 v4.0.1a 和 v4.0.1b 模型
+python -c "
+import kagglehub
+print('正在下载 SpeciesNet v4.0.1a 模型...')
+kagglehub.model_download('google/speciesnet/pyTorch/v4.0.1a')
+print('正在下载 SpeciesNet v4.0.1b 模型...')
+kagglehub.model_download('google/speciesnet/pyTorch/v4.0.1b')
+print('模型下载完成！')
+"
+```
+
+### 验证模型安装
+
+```bash
+# 验证模型文件存在
+conda activate speciesnet
+python -c "
+import os
+import kagglehub
+
+# 检查模型缓存目录
+cache_dir = os.path.expanduser('~/.cache/kagglehub/models/google/speciesnet')
+if os.path.exists(cache_dir):
+    print('✓ 模型缓存目录存在')
+    
+    # 检查 v4.0.1a
+    v4_0_1a = os.path.join(cache_dir, 'pyTorch/v4.0.1a')
+    if os.path.exists(v4_0_1a):
+        print('✓ v4.0.1a 模型已安装')
+    else:
+        print('✗ v4.0.1a 模型未找到')
+    
+    # 检查 v4.0.1b  
+    v4_0_1b = os.path.join(cache_dir, 'pyTorch/v4.0.1b')
+    if os.path.exists(v4_0_1b):
+        print('✓ v4.0.1b 模型已安装')
+    else:
+        print('✗ v4.0.1b 模型未找到')
+else:
+    print('✗ 模型缓存目录不存在，请先下载模型')
+"
+```
+
+### 模型兼容性修复
+
+如果遇到 PyTorch 加载模型时的兼容性问题：
+
+```bash
+# 检查 PyTorch 版本
+conda activate speciesnet
+python -c "import torch; print(f'PyTorch 版本: {torch.__version__}')"
+
+# 如果是 PyTorch 2.6+ 版本，系统已自动修复 weights_only 参数问题
+# 如遇到问题，可以手动验证修复是否生效：
+python -c "
+import speciesnet
+print('测试分类器加载...')
+classifier = speciesnet.SpeciesNetClassifier('kaggle:google/speciesnet/pyTorch/v4.0.1a')
+print('✓ 分类器加载成功')
+"
+```
+
+### 模型存储位置
+
+```bash
+# 模型默认存储位置
+echo '模型存储目录:'
+echo "~/.cache/kagglehub/models/google/speciesnet/"
+echo "具体路径: $(echo ~/.cache/kagglehub/models/google/speciesnet/)"
+
+# 查看模型文件大小
+du -sh ~/.cache/kagglehub/models/google/speciesnet/ 2>/dev/null || echo "模型目录不存在"
+```
+
+**注意事项：**
+- 模型文件总大小约 500MB，请确保有足够的存储空间
+- 首次下载需要稳定的网络连接，建议在网络良好的环境下进行
+- 如果下载中断，可以重新运行下载命令，系统会自动续传
+- 模型文件下载后会缓存在本地，后续使用无需重新下载
+
 ## 📋 安装后验证
 
 ### 检查服务状态
@@ -153,12 +258,67 @@ sudo journalctl -u speciesnet-backend -f
 
 4. **模型下载失败**
    ```bash
-   # 手动重新下载
+   # 手动重新下载（强制重新下载）
    conda activate speciesnet
    python -c "
    import kagglehub
+   print('强制重新下载 v4.0.1a 模型...')
    kagglehub.model_download('google/speciesnet/pyTorch/v4.0.1a', force_download=True)
+   print('强制重新下载 v4.0.1b 模型...')
    kagglehub.model_download('google/speciesnet/pyTorch/v4.0.1b', force_download=True)
+   print('模型重新下载完成！')
+   "
+   ```
+
+5. **模型加载错误**
+   ```bash
+   # 检查模型文件完整性
+   conda activate speciesnet
+   python -c "
+   import torch
+   import os
+   
+   model_paths = [
+       '~/.cache/kagglehub/models/google/speciesnet/pyTorch/v4.0.1a/1/always_crop_99710272_22x8_v12_epoch_00148.pt',
+       '~/.cache/kagglehub/models/google/speciesnet/pyTorch/v4.0.1b/1/full_image_88545560_22x8_v12_epoch_00153.pt'
+   ]
+   
+   for path in model_paths:
+       full_path = os.path.expanduser(path)
+       if os.path.exists(full_path):
+           try:
+               checkpoint = torch.load(full_path, map_location='cpu', weights_only=False)
+               print(f'✓ {path} 加载成功')
+           except Exception as e:
+               print(f'✗ {path} 加载失败: {e}')
+       else:
+           print(f'✗ {path} 文件不存在')
+   "
+   
+   # 如果文件损坏，删除并重新下载
+   rm -rf ~/.cache/kagglehub/models/google/speciesnet/
+   # 然后重新运行模型下载命令
+   ```
+
+6. **PyTorch 兼容性问题**
+   ```bash
+   # 检查并修复 PyTorch 2.6+ 兼容性问题
+   conda activate speciesnet
+   python -c "
+   import torch
+   print(f'PyTorch 版本: {torch.__version__}')
+   
+   # 测试 SpeciesNet 导入和基本功能
+   try:
+       import speciesnet
+       print('✓ SpeciesNet 导入成功')
+       
+       # 测试分类器创建
+       classifier = speciesnet.SpeciesNetClassifier('kaggle:google/speciesnet/pyTorch/v4.0.1a')
+       print('✓ 分类器创建成功')
+   except Exception as e:
+       print(f'✗ SpeciesNet 测试失败: {e}')
+       print('请检查模型安装或 PyTorch 版本兼容性')
    "
    ```
 

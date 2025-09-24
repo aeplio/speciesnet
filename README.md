@@ -73,6 +73,25 @@ conda activate speciesnet
 ---
 严格遵守以上规则以保证环境一致性。
 
+## 模型安装
+
+在首次使用前，需要安装 SpeciesNet 模型：
+
+```powershell
+conda activate speciesnet
+# 安装 SpeciesNet 包
+pip install speciesnet
+
+# 预下载模型（可选，首次使用时会自动下载）
+python -c "
+import kagglehub
+kagglehub.model_download('google/speciesnet/pyTorch/v4.0.1a')
+kagglehub.model_download('google/speciesnet/pyTorch/v4.0.1b')
+"
+```
+
+**注意**: 模型文件约500MB，请确保网络连接稳定。详细安装说明请参考 [QUICK_START.md](QUICK_START.md)。
+
 ## 前后端开发启动
 
 1) 后端（FastAPI）：
