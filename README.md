@@ -73,4 +73,4 @@ python scripts/env_guard.py
 3. 也可使用 VS Code 任务：
 1. Tasks: Run Task -> `Dev: All`（同时启动后端与前端）
 
-前后端均正常启动后，前端会通过 Vite 代理将以 `/api` 开头的请求转发至 `http://127.0.0.1:8000`，浏览器访问：`http://<你的IP>:3000` 或 `http://localhost:3000` 即可访问项目。
+# 前后端均正常启动后，前端会通过 Vite 代理将以 `/api` 开头的请求转发至 `http://127.0.0.1:8000`，浏览器访问：`http://<你的IP>:3000` 或 `http://localhost:3000` 即可访问项目。
